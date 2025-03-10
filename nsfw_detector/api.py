@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 # Create router for Forge UI plugin
 router = APIRouter(
-    prefix="/nsfw",
     tags=["NSFW Detector"],
     responses={404: {"description": "Not found"}},
 )
@@ -301,7 +300,7 @@ def register(forge_app: FastAPI):
             })
             
         # Include the router with explicit prefix
-        forge_app.include_router(router)
+        forge_app.include_router(router, prefix="/nsfw")
         
         # Log successful registration
         logger.info("NSFW Detector plugin registered successfully")

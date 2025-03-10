@@ -17,6 +17,7 @@
     "numpy": ">=1.21.2"
   },
   "forge": {
+    "id": "nsfw-detector",
     "api": "1.0.0",
     "type": "extension",
     "name": "NSFW Detector",
@@ -24,16 +25,16 @@
     "version": "1.0.0",
     "author": "Your Name",
     "repository": "https://github.com/GeeZeeS/nsfw-detector",
-    "entry_point": "nsfw_detector:register",
-    "endpoints": [
+    "entry_point": "nsfw_detector.api:register",
+    "routes": [
       {
-        "path": "/nsfw/",
+        "path": "/",
         "method": "GET",
         "description": "Get NSFW Detector API information",
         "auth": false
       },
       {
-        "path": "/nsfw/check",
+        "path": "/check",
         "method": "POST",
         "description": "Check if content is NSFW",
         "auth": true,
@@ -49,7 +50,7 @@
         }
       },
       {
-        "path": "/nsfw/health",
+        "path": "/health",
         "method": "GET",
         "description": "Health check endpoint",
         "auth": false
