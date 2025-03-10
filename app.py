@@ -287,14 +287,23 @@ async def health_check():
 # This is the entry point that Forge UI will use to register the plugin
 def register(app):
     """Register the plugin with Forge UI"""
-    # Add OpenAPI documentation
-    app.openapi_tags = [
-        {
+    try:
+        # Add OpenAPI documentation
+        if not hasattr(app, 'openapi_tags'):
+            app.openapi_tags = []
+        app.openapi_tags.append({
             "name": "NSFW Detector",
             "description": "Endpoints for NSFW content detection in various file types"
-        }
-    ]
-    
-    # Include the router
-    app.include_router(router)
-    logger.info("NSFW Detector plugin registered successfully")
+        })
+        
+        # Include the router
+        app.include_router(router, prefix="")
+        logger.info("NSFW Detector plugin registered successfully")
+        
+        # Log the registered routes
+        for route in app.routes:
+            logger.info(f"Registered route: {route.path}")
+            
+    except Exception as e:
+        logger.error(f"Failed to register NSFW Detector plugin: {str(e)}")
+        raise

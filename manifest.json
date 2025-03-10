@@ -30,7 +30,17 @@
         "path": "/nsfw/check",
         "method": "POST",
         "description": "Check if content is NSFW",
-        "auth": true
+        "auth": true,
+        "parameters": {
+          "file": {
+            "type": "file",
+            "description": "File to check for NSFW content"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to file to check for NSFW content"
+          }
+        }
       },
       {
         "path": "/nsfw/health",
