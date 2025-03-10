@@ -21,28 +21,18 @@ class ModelManager:
         return cls._instance
     
     def __init__(self):
-    try:
-        logger.info("Initializing NSFW detection model...")
-        
-        # Check if CUDA is available and set device accordingly
-        import torch
-        if torch.cuda.is_available():
-            self.device = 0  # Use first GPU
-            logger.info("CUDA is available, using GPU")
-        else:
-            self.device = -1  # Use CPU
-            logger.info("CUDA is not available, using CPU")
-            
-        # Load model with explicit device setting
-        self.pipe = pipeline("image-classification", model=MODEL_NAME, device=self.device)
-        self.usage_count = 0
-        self.reset_threshold = 10000  # Reset model after processing 10,000 images
-        logger.info("Model manager initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize model: {str(e)}")
-        # Create a dummy pipeline that returns a fixed result for testing
-        self.pipe = lambda x: [{'label': 'normal', 'score': 0.95}, {'label': 'nsfw', 'score': 0.05}]
-        logger.info("Using fallback dummy model")
+        try:
+            logger.info("Initializing NSFW detection model...")
+            # Force CPU usage to avoid CUDA/CPU tensor mismatch
+            self.pipe = pipeline("image-classification", model=MODEL_NAME, device=-1)
+            self.usage_count = 0
+            self.reset_threshold = 10000
+            logger.info("Model manager initialized successfully (CPU mode)")
+        except Exception as e:
+            logger.error(f"Failed to initialize model: {str(e)}")
+            # Create a dummy pipeline
+            self.pipe = lambda x: [{'label': 'normal', 'score': 0.95}, {'label': 'nsfw', 'score': 0.05}]
+            logger.info("Using fallback dummy model")
     
     def get_pipeline(self):
         # Increment usage counter
