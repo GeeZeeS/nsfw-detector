@@ -1,5 +1,5 @@
 # app.py
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, FastAPI
 from fastapi.responses import JSONResponse
 import tempfile
 import os
@@ -187,7 +187,7 @@ def get_extension_settings() -> Dict[str, Any]:
         logger.error(f"Failed to get extension settings: {str(e)}")
         return {"max_file_size": MAX_FILE_SIZE}
 
-@router.get("/")
+@router.get("/", summary="Get NSFW Detector API information")
 async def root():
     """Root endpoint with API information"""
     return {
@@ -199,11 +199,11 @@ async def root():
         }
     }
 
-@router.post("/check")
+@router.post("/check", summary="Check if content is NSFW")
 async def check_file(
     request: Request,
-    file: Optional[UploadFile] = File(None),
-    path: Optional[str] = Form(None)
+    file: Optional[UploadFile] = File(None, description="File to check for NSFW content"),
+    path: Optional[str] = Form(None, description="Path to file to check for NSFW content")
 ):
     """Unified file check endpoint for Forge UI"""
     # Verify Forge UI authentication
@@ -279,7 +279,7 @@ async def check_file(
         temp_handler.cleanup()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/health")
+@router.get("/health", summary="Check NSFW Detector health status")
 async def health_check():
     """Health check endpoint for Forge UI"""
     return {"status": "healthy"}
@@ -287,5 +287,14 @@ async def health_check():
 # This is the entry point that Forge UI will use to register the plugin
 def register(app):
     """Register the plugin with Forge UI"""
+    # Add OpenAPI documentation
+    app.openapi_tags = [
+        {
+            "name": "NSFW Detector",
+            "description": "Endpoints for NSFW content detection in various file types"
+        }
+    ]
+    
+    # Include the router
     app.include_router(router)
     logger.info("NSFW Detector plugin registered successfully")
