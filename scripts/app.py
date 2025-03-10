@@ -288,6 +288,10 @@ async def health_check():
 def register(app):
     """Register the plugin with Forge UI"""
     try:
+        # Configure logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        
         # Add OpenAPI documentation
         if not hasattr(app, 'openapi_tags'):
             app.openapi_tags = []
@@ -296,13 +300,18 @@ def register(app):
             "description": "Endpoints for NSFW content detection in various file types"
         })
         
-        # Include the router
-        app.include_router(router, prefix="")
-        logger.info("NSFW Detector plugin registered successfully")
+        # Include the router with explicit prefix
+        app.include_router(router, prefix="/nsfw")
         
-        # Log the registered routes
+        # Log all registered routes
+        logger.info("NSFW Detector plugin registered successfully")
+        logger.info("Registered routes:")
         for route in app.routes:
-            logger.info(f"Registered route: {route.path}")
+            logger.info(f"  {route.methods} {route.path}")
+            
+        # Log OpenAPI schema
+        logger.info("OpenAPI schema:")
+        logger.info(app.openapi())
             
     except Exception as e:
         logger.error(f"Failed to register NSFW Detector plugin: {str(e)}")
