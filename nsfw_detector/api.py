@@ -19,6 +19,13 @@ from .processors import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create router for Forge UI plugin
+router = APIRouter(
+    prefix="/nsfw",
+    tags=["NSFW Detector"],
+    responses={404: {"description": "Not found"}},
+)
+
 class TempFileHandler:
     """Temporary file manager"""
     def __init__(self):
@@ -165,13 +172,6 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
         logger.error(f"Error processing file: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Create router for Forge UI plugin
-router = APIRouter(
-    prefix="/nsfw",
-    tags=["NSFW Detector"],
-    responses={404: {"description": "Not found"}},
-)
-
 # Extension settings
 MAX_FILE_SIZE = 10 * 1024 * 1024  # Default 10MB
 
@@ -284,40 +284,31 @@ async def health_check():
     """Health check endpoint for Forge UI"""
     return {"status": "healthy"}
 
-def register(app: FastAPI):
+def register(forge_app: FastAPI):
     """Register the plugin with Forge UI"""
     try:
         logger.info("Starting NSFW Detector plugin registration...")
         
         # Add OpenAPI documentation
-        if not hasattr(app, 'openapi_tags'):
-            app.openapi_tags = []
+        if not hasattr(forge_app, 'openapi_tags'):
+            forge_app.openapi_tags = []
             
         # Add our tag if it doesn't exist
-        if not any(tag["name"] == "NSFW Detector" for tag in app.openapi_tags):
-            app.openapi_tags.append({
+        if not any(tag["name"] == "NSFW Detector" for tag in forge_app.openapi_tags):
+            forge_app.openapi_tags.append({
                 "name": "NSFW Detector",
                 "description": "Endpoints for NSFW content detection in various file types"
             })
-            logger.info("Added NSFW Detector OpenAPI tag")
-        
+            
         # Include the router with explicit prefix
-        app.include_router(router, prefix="/nsfw")
-        logger.info("Added NSFW Detector router with prefix /nsfw")
-        
-        # Log all registered routes
-        logger.info("NSFW Detector plugin registered successfully")
-        logger.info("Registered routes:")
-        for route in app.routes:
-            if hasattr(route, "path") and route.path.startswith("/nsfw"):
-                logger.info(f"  {route.methods} {route.path}")
-        
-        # Log OpenAPI schema
-        logger.info("OpenAPI schema:")
-        logger.info(app.openapi())
+        forge_app.include_router(router)
         
         # Log successful registration
-        logger.info("NSFW Detector plugin registration completed successfully")
+        logger.info("NSFW Detector plugin registered successfully")
+        logger.info("Registered routes:")
+        for route in forge_app.routes:
+            if hasattr(route, "path") and route.path.startswith("/nsfw"):
+                logger.info(f"  {route.methods} {route.path}")
             
     except Exception as e:
         logger.error(f"Failed to register NSFW Detector plugin: {str(e)}")
