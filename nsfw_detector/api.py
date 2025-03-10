@@ -16,7 +16,154 @@ from .processors import (
 )
 
 # Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class TempFileHandler:
+    """Temporary file manager"""
+    def __init__(self):
+        self.temp_files = []
+        self.temp_dirs = []
+        
+    def create_temp_file(self, suffix=None):
+        """Create temporary file"""
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        self.temp_files.append(temp_file.name)
+        return temp_file
+        
+    def create_temp_dir(self):
+        """Create temporary directory"""
+        temp_dir = tempfile.mkdtemp()
+        self.temp_dirs.append(temp_dir)
+        return temp_dir
+        
+    def cleanup(self):
+        """Clean up all temporary files and directories"""
+        # Clean up files
+        for file_path in self.temp_files:
+            try:
+                if os.path.exists(file_path):
+                    os.unlink(file_path)
+            except Exception as e:
+                logger.error(f"Failed to clean up temporary file {file_path}: {str(e)}")
+        self.temp_files.clear()
+        
+        # Clean up directories
+        for dir_path in self.temp_dirs:
+            try:
+                if os.path.exists(dir_path):
+                    shutil.rmtree(dir_path)
+            except Exception as e:
+                logger.error(f"Failed to clean up temporary directory {dir_path}: {str(e)}")
+        self.temp_dirs.clear()
+        
+        # Force garbage collection
+        gc.collect()
+
+def detect_file_type(file_path):
+    """Detect file type using first 2048 bytes"""
+    try:
+        with open(file_path, 'rb') as f:
+            header = f.read(2048)
+        
+        mime = magic.Magic(mime=True)
+        mime_type = mime.from_buffer(header)
+        
+        # Special handling for RAR files
+        if mime_type not in MIME_TO_EXT:
+            with open(file_path, 'rb') as f:
+                if f.read(7).startswith(b'Rar!\x1a\x07'):
+                    return 'application/x-rar', '.rar'
+        
+        return mime_type, MIME_TO_EXT.get(mime_type)
+        
+    except Exception as e:
+        logger.error(f"File type detection failed: {str(e)}")
+        raise
+
+def process_file_by_type(file_path, detected_type, original_filename, temp_handler):
+    """Process file based on its type"""
+    mime_type, ext = detected_type
+    
+    # Use original file extension if available
+    if original_filename and '.' in original_filename:
+        original_ext = os.path.splitext(original_filename)[1].lower()
+        if original_ext in IMAGE_EXTENSIONS or original_ext == '.pdf' or \
+           original_ext in VIDEO_EXTENSIONS or original_ext in {'.rar', '.zip', '.7z', '.gz'} or \
+           original_ext in DOCUMENT_EXTENSIONS:
+            ext = original_ext
+    
+    if not ext:
+        logger.error(f"Unsupported file type: {mime_type}")
+        raise HTTPException(status_code=400, detail=f'Unsupported file type: {mime_type}')
+    
+    try:
+        if ext in IMAGE_EXTENSIONS:
+            with open(file_path, 'rb') as f:
+                from PIL import Image
+                with Image.open(f) as image:
+                    result = process_image(image)
+                    gc.collect()
+                    return {
+                        'status': 'success',
+                        'filename': original_filename,
+                        'result': result
+                    }
+                
+        elif ext == '.pdf':
+            with open(file_path, 'rb') as f:
+                pdf_stream = f.read()
+                result = process_pdf_file(pdf_stream)
+                gc.collect()
+                if result:
+                    return {
+                        'status': 'success',
+                        'filename': original_filename,
+                        'result': result
+                    }
+                raise HTTPException(status_code=400, detail='No processable content found in PDF')
+                
+        elif ext in VIDEO_EXTENSIONS:
+            result = process_video_file(file_path)
+            gc.collect()
+            if result:
+                return {
+                    'status': 'success',
+                    'filename': original_filename,
+                    'result': result
+                }
+            raise HTTPException(status_code=400, detail='No processable content found in video')
+                
+        elif ext in {'.zip', '.rar', '.7z', '.gz'}:
+            result = process_archive(file_path, original_filename)
+            gc.collect()
+            return result
+            
+        elif ext in DOCUMENT_EXTENSIONS:
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+                if ext == '.doc':
+                    result = process_doc_file(file_content)
+                else:  # .docx
+                    result = process_docx_file(file_content)
+                
+                gc.collect()
+                    
+                if result:
+                    return {
+                        'status': 'success',
+                        'filename': original_filename,
+                        'result': result
+                    }
+                raise HTTPException(status_code=400, detail='No processable content found in document')
+            
+        else:
+            logger.error(f"Unsupported file extension: {ext}")
+            raise HTTPException(status_code=400, detail=f'Unsupported file extension: {ext}')
+            
+    except Exception as e:
+        logger.error(f"Error processing file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Create router for Forge UI plugin
 router = APIRouter(
@@ -137,34 +284,40 @@ async def health_check():
     """Health check endpoint for Forge UI"""
     return {"status": "healthy"}
 
-# This is the entry point that Forge UI will use to register the plugin
 def register(app: FastAPI):
     """Register the plugin with Forge UI"""
     try:
-        # Configure logging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
+        logger.info("Starting NSFW Detector plugin registration...")
         
         # Add OpenAPI documentation
         if not hasattr(app, 'openapi_tags'):
             app.openapi_tags = []
-        app.openapi_tags.append({
-            "name": "NSFW Detector",
-            "description": "Endpoints for NSFW content detection in various file types"
-        })
+            
+        # Add our tag if it doesn't exist
+        if not any(tag["name"] == "NSFW Detector" for tag in app.openapi_tags):
+            app.openapi_tags.append({
+                "name": "NSFW Detector",
+                "description": "Endpoints for NSFW content detection in various file types"
+            })
+            logger.info("Added NSFW Detector OpenAPI tag")
         
         # Include the router with explicit prefix
         app.include_router(router, prefix="/nsfw")
+        logger.info("Added NSFW Detector router with prefix /nsfw")
         
         # Log all registered routes
         logger.info("NSFW Detector plugin registered successfully")
         logger.info("Registered routes:")
         for route in app.routes:
-            logger.info(f"  {route.methods} {route.path}")
-            
+            if hasattr(route, "path") and route.path.startswith("/nsfw"):
+                logger.info(f"  {route.methods} {route.path}")
+        
         # Log OpenAPI schema
         logger.info("OpenAPI schema:")
         logger.info(app.openapi())
+        
+        # Log successful registration
+        logger.info("NSFW Detector plugin registration completed successfully")
             
     except Exception as e:
         logger.error(f"Failed to register NSFW Detector plugin: {str(e)}")
