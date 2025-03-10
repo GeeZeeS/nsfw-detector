@@ -92,97 +92,52 @@ curl -X POST -F "file=@/path/to/image.jpg" https://vx.link/public/nsfw
 
 This project is open-source under the Apache 2.0 license.
 
-# NSFW Detector Forge UI Plugin
+# NSFW Detector for Forge UI
 
-A FastAPI-based plugin for Forge UI that provides NSFW content detection capabilities.
+A powerful NSFW content detection plugin for Forge UI that can analyze images, videos, PDFs, and documents for inappropriate content.
 
 ## Features
 
-- NSFW content detection for images, videos, PDFs, and documents
-- Support for multiple file formats
-- Secure file handling with temporary file cleanup
-- Authentication support for Forge UI integration
-- Health check endpoint for monitoring
+- Image analysis for NSFW content
+- Video frame extraction and analysis
+- PDF content analysis
+- Document (DOC, DOCX) content analysis
+- Support for various file formats
+- Configurable file size limits
+- Health check endpoint
 
 ## Installation
 
-1. Clone this repository or download the source code
-2. Install the required dependencies:
+You can install this extension directly from GitHub using pip:
+
 ```bash
-pip install -r requirements.txt
+pip install git+https://github.com/yourusername/nsfw-detector.git
 ```
+
+## Usage
+
+After installation, the extension will be automatically registered with Forge UI. You can access the following endpoints:
+
+- `GET /nsfw/` - Get API information
+- `POST /nsfw/check` - Check if content is NSFW
+- `GET /nsfw/health` - Health check endpoint
 
 ## Configuration
 
-The plugin uses the following configuration from `config.py`:
-- `MAX_FILE_SIZE`: Maximum allowed file size
-- `IMAGE_EXTENSIONS`: Supported image file extensions
-- `VIDEO_EXTENSIONS`: Supported video file extensions
-- `DOCUMENT_EXTENSIONS`: Supported document file extensions
-- `MIME_TO_EXT`: MIME type to file extension mapping
+The extension can be configured through Forge UI settings:
 
-## Usage with Forge UI
-
-1. Start the plugin server:
-```bash
-python app.py
-```
-
-2. The plugin will be available at `http://localhost:8000`
-
-3. API Endpoints:
-   - POST `/api/nsfw/check`: Check if content is NSFW
-   - GET `/health`: Health check endpoint
-
-4. Authentication:
-   - All requests must include a Bearer token in the Authorization header
-   - Example: `Authorization: Bearer your-token-here`
-
-5. Example API Request:
-```bash
-curl -X POST http://localhost:8000/api/nsfw/check \
-  -H "Authorization: Bearer your-token-here" \
-  -F "file=@/path/to/your/file.jpg"
-```
-
-## Response Format
-
-The API returns JSON responses in the following format:
-
-```json
-{
-  "status": "success",
-  "filename": "example.jpg",
-  "result": {
-    // NSFW detection results
-  }
-}
-```
-
-## Error Handling
-
-The API returns appropriate HTTP status codes and error messages:
-- 400: Bad Request (invalid file type, file too large, etc.)
-- 401: Unauthorized (missing or invalid authentication)
-- 404: Not Found (file not found)
-- 500: Internal Server Error
-
-## Security Considerations
-
-- All file paths are validated to prevent directory traversal
-- Temporary files are automatically cleaned up
-- File size limits are enforced
-- Authentication is required for all requests
+- `max_file_size`: Maximum file size in bytes (default: 10MB)
 
 ## Development
 
-To modify or extend the plugin:
+To install the package in development mode:
 
-1. Update the manifest.json with any new endpoints or dependencies
-2. Modify the app.py file to add new functionality
-3. Update the requirements.txt if new dependencies are added
-4. Test the changes thoroughly before deployment
+```bash
+git clone https://github.com/yourusername/nsfw-detector.git
+cd nsfw-detector
+pip install -e .
+```
 
 ## License
 
-MIT License
+This project is licensed under the MIT License - see the LICENSE file for details.

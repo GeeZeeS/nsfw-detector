@@ -2,7 +2,7 @@
   "name": "nsfw-detector",
   "version": "1.0.0",
   "description": "NSFW content detection plugin for Forge UI",
-  "main": "scripts/app.py",
+  "main": "nsfw_detector/api.py",
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
@@ -24,7 +24,7 @@
     "version": "1.0.0",
     "author": "Your Name",
     "repository": "https://github.com/GeeZeeS/nsfw-detector",
-    "entry_point": "scripts.app:register",
+    "entry_point": "nsfw_detector:register",
     "endpoints": [
       {
         "path": "/nsfw/",
