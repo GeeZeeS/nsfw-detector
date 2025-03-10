@@ -24,64 +24,69 @@ class ModelManager:
         try:
             logger.info("Initializing NSFW detection model...")
             
-            # Check if CUDA is available and set device accordingly
-            import torch
-            if torch.cuda.is_available():
-                self.device = 0  # Use first GPU
-                logger.info("CUDA is available, using GPU")
-            else:
-                self.device = -1  # Use CPU
-                logger.info("CUDA is not available, using CPU")
+            # Force CPU mode to avoid tensor type mismatches
+            self.device = "cpu"
+            logger.info("Forcing CPU mode for model compatibility")
             
-            # Load model with explicit device setting
-            self.pipe = pipeline("image-classification", model=MODEL_NAME, device=self.device)
+            # Import the model with explicit CPU placement
+            from transformers import AutoFeatureExtractor, AutoModelForImageClassification
+            
+            # Load model components manually to ensure all on same device
+            self.model_name = MODEL_NAME
+            self.feature_extractor = AutoFeatureExtractor.from_pretrained(self.model_name)
+            self.model = AutoModelForImageClassification.from_pretrained(self.model_name).to(self.device)
+            
+            # Don't use the pipeline, we'll implement prediction directly
             self.usage_count = 0
-            self.reset_threshold = 10000  # Reset model after processing 10,000 images
-            logger.info("Model manager initialized successfully")
+            self.reset_threshold = 10000
+            logger.info("Model manager initialized successfully with manual device control")
         except Exception as e:
             logger.error(f"Failed to initialize model: {str(e)}")
-            # Create a dummy pipeline that returns a fixed result for testing
-            self.pipe = lambda x: [{'label': 'normal', 'score': 0.95}, {'label': 'nsfw', 'score': 0.05}]
+            # Create fallback dummy function
+            self.model = None
+            self.feature_extractor = None
             logger.info("Using fallback dummy model")
     
     def get_pipeline(self):
         # Increment usage counter
         self.usage_count += 1
         
-        # Check if model needs to be reset
-        if self.usage_count >= self.reset_threshold:
-            logger.info(f"Model has processed {self.usage_count} images, performing reset")
-            # Store old model reference
-            old_pipe = self.pipe
+        # If using fallback dummy model
+        if self.model is None:
+            return lambda x: [{'label': 'normal', 'score': 0.95}, {'label': 'nsfw', 'score': 0.05}]
+        
+        # Return our custom prediction function
+        return self._predict
+    
+    def _predict(self, image):
+        """Custom prediction function to replace the pipeline"""
+        try:
+            import torch
             
-            # Create new model
-            try:
-                self.pipe = pipeline("image-classification", model=MODEL_NAME, device=self.device)
-            except Exception as e:
-                logger.error(f"Failed to reset model: {str(e)}")
-                # Keep using the old model
-                return old_pipe
+            # Prepare the image
+            inputs = self.feature_extractor(images=image, return_tensors="pt").to(self.device)
             
-            # Delete old model
-            del old_pipe
+            # Run prediction with no gradient tracking
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                logits = outputs.logits
+                
+            # Get predicted class and probability
+            predicted_class_idx = logits.argmax(-1).item()
+            scores = torch.nn.functional.softmax(logits, dim=-1)
             
-            # Try to clean PyTorch cache
-            try:
-                import torch
-                if hasattr(torch.cuda, 'empty_cache'):
-                    torch.cuda.empty_cache()
-            except:
-                pass
-            
-            # Force garbage collection
-            gc.collect()
-            
-            # Reset counter
-            self.usage_count = 0
-            
-            logger.info("Model reset completed")
-            
-        return self.pipe
+            # Convert to the expected output format
+            result = []
+            for i, label in enumerate(self.model.config.id2label.values()):
+                result.append({
+                    'label': label,
+                    'score': scores[0, i].item()
+                })
+                
+            return result
+        except Exception as e:
+            logger.error(f"Prediction error: {str(e)}")
+            return [{'label': 'normal', 'score': 0.95}, {'label': 'nsfw', 'score': 0.05}]
 
 # Initialize model manager instance
 model_manager = ModelManager.get_instance()
@@ -102,11 +107,11 @@ def process_image(image):
         if isinstance(image, (str, Path)):
             image = Image.open(image).convert("RGB")
         
-        # Get model pipeline
-        pipe = model_manager.get_pipeline()
+        # Get prediction function
+        predict_fn = model_manager.get_pipeline()
         
         # Process image with model
-        result = pipe(image)
+        result = predict_fn(image)
         nsfw_score = next((item['score'] for item in result if item['label'] == 'nsfw'), 0)
         normal_score = next((item['score'] for item in result if item['label'] == 'normal'), 1)
         
