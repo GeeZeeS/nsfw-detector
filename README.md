@@ -1,72 +1,64 @@
-# NSFW Detector for Forge UI
+# NSFW Detector for Automatic1111 Web UI
 
-A powerful NSFW content detection plugin for Forge UI that can analyze images, videos, PDFs, and documents.
+A powerful NSFW content detection extension for Automatic1111 Stable Diffusion Web UI that can analyze images for NSFW content.
 
 ## Features
 
-- Detect NSFW content in multiple file formats:
-  - Images (JPG, PNG, GIF, WebP, etc.)
-  - Videos (MP4, AVI, MKV, etc.)
-  - Documents (PDF, DOC, DOCX)
-  - Archives (ZIP, RAR, 7Z, etc.)
+- Detect NSFW content in images
+- Block NSFW generated images automatically
+- Configure detection threshold 
+- Simple UI in the Extensions tab
+- API endpoint for external applications
 - High accuracy using state-of-the-art AI models
-- Fast processing with optimized performance
-- Support for nested archives
-- Comprehensive MIME type detection
 
 ## Installation
 
-To install the NSFW Detector plugin in your Forge UI environment:
+### Method 1: Install from Extensions Tab
 
-```bash
-pip install git+https://github.com/yourusername/nsfw-detector.git
-```
+1. Open Automatic1111 Web UI
+2. Go to the "Extensions" tab
+3. Click on "Install from URL"
+4. Paste this repo URL: `https://github.com/yourusername/nsfw-detector.git`
+5. Click "Install"
+6. Restart the Web UI
 
-Or add to your project's requirements.txt:
+### Method 2: Manual Installation
 
-```
-git+https://github.com/yourusername/nsfw-detector.git
-```
+1. Navigate to your Automatic1111 extensions folder:
+   ```bash
+   cd /path/to/stable-diffusion-webui/extensions/
+   ```
 
-### System Requirements
+2. Clone this repository:
+   ```bash
+   git clone https://github.com/yourusername/nsfw-detector.git
+   ```
 
-- Python 3.8 or higher
-- For video processing: ffmpeg
-- For archive handling: 
-  - unrar (for RAR files)
-  - p7zip (for 7z files)
-  - antiword (for DOC files)
-
-On Ubuntu/Debian:
-```bash
-sudo apt-get update
-sudo apt-get install ffmpeg unrar p7zip-full antiword
-```
-
-On macOS:
-```bash
-brew install ffmpeg unrar p7zip antiword
-```
+3. Restart the Web UI
 
 ## Usage
 
-The plugin will be automatically registered with Forge UI upon installation. You can access it through the `/nsfw/check` endpoint:
+### UI Interface
+
+After installation, you'll find a new tab called "NSFW Detector" in the Web UI. Here you can:
+
+1. Set the NSFW detection threshold (default: 0.8)
+2. Enable/disable checking of generated images
+3. Enable/disable automatic blocking of NSFW images
+4. Test detection on your own images
+
+### API Usage
+
+The extension adds a new API endpoint at `/nsfw/check`. You can use it like this:
 
 ```python
 import requests
 
-# Check a file
-files = {'file': open('image.jpg', 'rb')}
-response = requests.post('http://your-forge-ui/nsfw/check', files=files)
-print(response.json())
-
-# Check a file by path
-data = {'path': '/path/to/file.jpg'}
-response = requests.post('http://your-forge-ui/nsfw/check', data=data)
+# Check an image
+files = {'image': open('image.jpg', 'rb')}
+response = requests.post('http://localhost:7860/nsfw/check', files=files)
 print(response.json())
 ```
-
-## Response Format
 
 The API returns JSON responses in the following format:
 
@@ -77,34 +69,24 @@ The API returns JSON responses in the following format:
     "result": {
         "nsfw": 0.95,
         "normal": 0.05
-    }
-}
-```
-
-For archives, it includes the matched file information:
-
-```json
-{
-    "status": "success",
-    "filename": "archive.zip",
-    "matched_file": "subfolder/image.jpg",
-    "result": {
-        "nsfw": 0.95,
-        "normal": 0.05
-    }
+    },
+    "is_nsfw": true
 }
 ```
 
 ## Configuration
 
-The plugin can be configured through environment variables:
+All settings can be changed through the NSFW Detector tab in the Web UI:
 
-- `MAX_FILE_SIZE`: Maximum file size in bytes (default: 20GB)
-- `NSFW_THRESHOLD`: Threshold for NSFW detection (default: 0.8)
-- `FFMPEG_MAX_FRAMES`: Maximum frames to extract from videos (default: 20)
-- `FFMPEG_TIMEOUT`: Timeout for video processing in seconds (default: 1800)
-- `CHECK_ALL_FILES`: Whether to check all files in archives (default: 0)
-- `MAX_INTERVAL_SECONDS`: Maximum interval between frame extractions (default: 30)
+- **NSFW Detection Threshold**: The confidence threshold above which an image is considered NSFW (default: 0.8)
+- **Check Generated Images**: If enabled, all generated images will be checked for NSFW content
+- **Block NSFW Images**: If enabled, images detected as NSFW will be blocked from the results
+
+## System Requirements
+
+- Automatic1111 Web UI
+- Python 3.8 or higher
+- Enough VRAM to run both Stable Diffusion and the NSFW detection model
 
 ## License
 
