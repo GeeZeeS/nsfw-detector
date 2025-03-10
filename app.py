@@ -1,8 +1,6 @@
 # app.py
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import JSONResponse
 import tempfile
 import os
 import shutil
@@ -21,175 +19,12 @@ from processors import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="NSFW Detector API")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Create router for Forge UI plugin
+router = APIRouter(
+    prefix="/api/nsfw",
+    tags=["NSFW Detector"],
+    responses={404: {"description": "Not found"}},
 )
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Load index.html content
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(CURRENT_DIR, 'index.html'), 'r', encoding='utf-8') as f:
-    INDEX_HTML = f.read()
-
-class TempFileHandler:
-    """Temporary file manager"""
-    def __init__(self):
-        self.temp_files = []
-        self.temp_dirs = []
-        
-    def create_temp_file(self, suffix=None):
-        """Create temporary file"""
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        self.temp_files.append(temp_file.name)
-        return temp_file
-        
-    def create_temp_dir(self):
-        """Create temporary directory"""
-        temp_dir = tempfile.mkdtemp()
-        self.temp_dirs.append(temp_dir)
-        return temp_dir
-        
-    def cleanup(self):
-        """Clean up all temporary files and directories"""
-        # Clean up files
-        for file_path in self.temp_files:
-            try:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
-            except Exception as e:
-                logger.error(f"Failed to clean up temporary file {file_path}: {str(e)}")
-        self.temp_files.clear()
-        
-        # Clean up directories
-        for dir_path in self.temp_dirs:
-            try:
-                if os.path.exists(dir_path):
-                    shutil.rmtree(dir_path)
-            except Exception as e:
-                logger.error(f"Failed to clean up temporary directory {dir_path}: {str(e)}")
-        self.temp_dirs.clear()
-        
-        # Force garbage collection
-        gc.collect()
-
-def detect_file_type(file_path):
-    """Detect file type using first 2048 bytes"""
-    try:
-        with open(file_path, 'rb') as f:
-            header = f.read(2048)
-        
-        mime = magic.Magic(mime=True)
-        mime_type = mime.from_buffer(header)
-        
-        # Special handling for RAR files
-        if mime_type not in MIME_TO_EXT:
-            with open(file_path, 'rb') as f:
-                if f.read(7).startswith(b'Rar!\x1a\x07'):
-                    return 'application/x-rar', '.rar'
-        
-        return mime_type, MIME_TO_EXT.get(mime_type)
-        
-    except Exception as e:
-        logger.error(f"File type detection failed: {str(e)}")
-        raise
-
-def process_file_by_type(file_path, detected_type, original_filename, temp_handler):
-    """Process file based on its type"""
-    mime_type, ext = detected_type
-    
-    # Use original file extension if available
-    if original_filename and '.' in original_filename:
-        original_ext = os.path.splitext(original_filename)[1].lower()
-        if original_ext in IMAGE_EXTENSIONS or original_ext == '.pdf' or \
-           original_ext in VIDEO_EXTENSIONS or original_ext in {'.rar', '.zip', '.7z', '.gz'} or \
-           original_ext in DOCUMENT_EXTENSIONS:
-            ext = original_ext
-    
-    if not ext:
-        logger.error(f"Unsupported file type: {mime_type}")
-        raise HTTPException(status_code=400, detail=f'Unsupported file type: {mime_type}')
-    
-    try:
-        if ext in IMAGE_EXTENSIONS:
-            with open(file_path, 'rb') as f:
-                from PIL import Image
-                with Image.open(f) as image:
-                    result = process_image(image)
-                    gc.collect()
-                    return {
-                        'status': 'success',
-                        'filename': original_filename,
-                        'result': result
-                    }
-                
-        elif ext == '.pdf':
-            with open(file_path, 'rb') as f:
-                pdf_stream = f.read()
-                result = process_pdf_file(pdf_stream)
-                gc.collect()
-                if result:
-                    return {
-                        'status': 'success',
-                        'filename': original_filename,
-                        'result': result
-                    }
-                raise HTTPException(status_code=400, detail='No processable content found in PDF')
-                
-        elif ext in VIDEO_EXTENSIONS:
-            result = process_video_file(file_path)
-            gc.collect()
-            if result:
-                return {
-                    'status': 'success',
-                    'filename': original_filename,
-                    'result': result
-                }
-            raise HTTPException(status_code=400, detail='No processable content found in video')
-                
-        elif ext in {'.zip', '.rar', '.7z', '.gz'}:
-            result = process_archive(file_path, original_filename)
-            gc.collect()
-            return result
-            
-        elif ext in DOCUMENT_EXTENSIONS:
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-                if ext == '.doc':
-                    result = process_doc_file(file_content)
-                else:  # .docx
-                    result = process_docx_file(file_content)
-                
-                gc.collect()
-                    
-                if result:
-                    return {
-                        'status': 'success',
-                        'filename': original_filename,
-                        'result': result
-                    }
-                raise HTTPException(status_code=400, detail='No processable content found in document')
-            
-        else:
-            logger.error(f"Unsupported file extension: {ext}")
-            raise HTTPException(status_code=400, detail=f'Unsupported file extension: {ext}')
-            
-    except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    """Serve the index.html file"""
-    return INDEX_HTML
 
 # Extension settings
 MAX_FILE_SIZE = 10 * 1024 * 1024  # Default 10MB
@@ -206,7 +41,19 @@ def get_extension_settings() -> Dict[str, Any]:
         logger.error(f"Failed to get extension settings: {str(e)}")
         return {"max_file_size": MAX_FILE_SIZE}
 
-@app.post("/api/nsfw/check")
+@router.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "name": "NSFW Detector API",
+        "version": "1.0.0",
+        "endpoints": {
+            "check": "/api/nsfw/check",
+            "health": "/api/nsfw/health"
+        }
+    }
+
+@router.post("/check")
 async def check_file(
     request: Request,
     file: Optional[UploadFile] = File(None),
@@ -286,11 +133,13 @@ async def check_file(
         temp_handler.cleanup()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
+@router.get("/health")
 async def health_check():
     """Health check endpoint for Forge UI"""
     return {"status": "healthy"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# This is the entry point that Forge UI will use to register the plugin
+def register(app):
+    """Register the plugin with Forge UI"""
+    app.include_router(router)
+    logger.info("NSFW Detector plugin registered successfully")

@@ -7,7 +7,6 @@
   "license": "MIT",
   "dependencies": {
     "fastapi": ">=0.68.0",
-    "uvicorn": ">=0.15.0",
     "python-multipart": ">=0.0.5",
     "python-magic": ">=0.4.24",
     "Pillow": ">=8.3.1",
@@ -24,13 +23,20 @@
     "description": "Detect NSFW content in images, videos, PDFs, and documents",
     "version": "1.0.0",
     "author": "Your Name",
-    "repository": "https://github.com/yourusername/nsfw-detector",
+    "repository": "https://github.com/GeeZeeS/nsfw-detector",
+    "entry_point": "app:register",
     "endpoints": [
       {
         "path": "/api/nsfw/check",
         "method": "POST",
         "description": "Check if content is NSFW",
         "auth": true
+      },
+      {
+        "path": "/api/nsfw/health",
+        "method": "GET",
+        "description": "Health check endpoint",
+        "auth": false
       }
     ],
     "settings": {
