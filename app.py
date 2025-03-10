@@ -167,7 +167,7 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
 
 # Create router for Forge UI plugin
 router = APIRouter(
-    prefix="/api/nsfw",
+    prefix="/nsfw",
     tags=["NSFW Detector"],
     responses={404: {"description": "Not found"}},
 )
@@ -194,8 +194,8 @@ async def root():
         "name": "NSFW Detector API",
         "version": "1.0.0",
         "endpoints": {
-            "check": "/api/nsfw/check",
-            "health": "/api/nsfw/health"
+            "check": "/nsfw/check",
+            "health": "/nsfw/health"
         }
     }
 

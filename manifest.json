@@ -27,13 +27,13 @@
     "entry_point": "app:register",
     "endpoints": [
       {
-        "path": "/api/nsfw/check",
+        "path": "/nsfw/check",
         "method": "POST",
         "description": "Check if content is NSFW",
         "auth": true
       },
       {
-        "path": "/api/nsfw/health",
+        "path": "/nsfw/health",
         "method": "GET",
         "description": "Health check endpoint",
         "auth": false
