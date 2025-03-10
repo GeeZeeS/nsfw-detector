@@ -19,7 +19,7 @@ setup(
     ],
     entry_points={
         "forge.extensions": [
-            "nsfw_detector = app:app",
+            "nsfw_detector = scripts.app:register",
         ],
     },
     author="Your Name",
