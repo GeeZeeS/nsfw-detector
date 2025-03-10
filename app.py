@@ -1,5 +1,8 @@
 # app.py
-from flask import Flask, request, jsonify, send_file, Response, g
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import os
 import shutil
@@ -7,23 +10,30 @@ import logging
 import magic
 import gc
 from pathlib import Path
-from werkzeug.utils import secure_filename
-from config import MAX_FILE_SIZE, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, MIME_TO_EXT, DOCUMENT_EXTENSIONS
+from typing import Optional, Dict, Any
+from config import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, MIME_TO_EXT, DOCUMENT_EXTENSIONS
 from utils import ArchiveHandler, can_process_file, sort_files_by_priority
 from processors import (
     process_image, process_pdf_file, process_video_file, 
     process_archive, process_doc_file, process_docx_file
 )
 
-# 配置日志
+# Configure logging
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = FastAPI(title="NSFW Detector API")
 
-# 文件上传配置
-app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE  # 从config导入的最大文件大小
-app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()  # 使用系统临时目录
-app.request_class.max_form_memory_size = 128 * 1024 * 1024  # 强制所有上传写入磁盘
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Load index.html content
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,48 +41,48 @@ with open(os.path.join(CURRENT_DIR, 'index.html'), 'r', encoding='utf-8') as f:
     INDEX_HTML = f.read()
 
 class TempFileHandler:
-    """临时文件管理器"""
+    """Temporary file manager"""
     def __init__(self):
         self.temp_files = []
         self.temp_dirs = []
         
     def create_temp_file(self, suffix=None):
-        """创建临时文件"""
+        """Create temporary file"""
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         self.temp_files.append(temp_file.name)
         return temp_file
         
     def create_temp_dir(self):
-        """创建临时目录"""
+        """Create temporary directory"""
         temp_dir = tempfile.mkdtemp()
         self.temp_dirs.append(temp_dir)
         return temp_dir
         
     def cleanup(self):
-        """清理所有临时文件和目录"""
-        # 清理文件
+        """Clean up all temporary files and directories"""
+        # Clean up files
         for file_path in self.temp_files:
             try:
                 if os.path.exists(file_path):
                     os.unlink(file_path)
             except Exception as e:
-                logger.error(f"清理临时文件失败 {file_path}: {str(e)}")
+                logger.error(f"Failed to clean up temporary file {file_path}: {str(e)}")
         self.temp_files.clear()
         
-        # 清理目录
+        # Clean up directories
         for dir_path in self.temp_dirs:
             try:
                 if os.path.exists(dir_path):
                     shutil.rmtree(dir_path)
             except Exception as e:
-                logger.error(f"清理临时目录失败 {dir_path}: {str(e)}")
+                logger.error(f"Failed to clean up temporary directory {dir_path}: {str(e)}")
         self.temp_dirs.clear()
         
-        # 强制垃圾回收
+        # Force garbage collection
         gc.collect()
 
 def detect_file_type(file_path):
-    """检测文件类型，使用文件的前2048字节"""
+    """Detect file type using first 2048 bytes"""
     try:
         with open(file_path, 'rb') as f:
             header = f.read(2048)
@@ -80,7 +90,7 @@ def detect_file_type(file_path):
         mime = magic.Magic(mime=True)
         mime_type = mime.from_buffer(header)
         
-        # 对于RAR文件的特殊处理
+        # Special handling for RAR files
         if mime_type not in MIME_TO_EXT:
             with open(file_path, 'rb') as f:
                 if f.read(7).startswith(b'Rar!\x1a\x07'):
@@ -89,14 +99,14 @@ def detect_file_type(file_path):
         return mime_type, MIME_TO_EXT.get(mime_type)
         
     except Exception as e:
-        logger.error(f"文件类型检测失败: {str(e)}")
+        logger.error(f"File type detection failed: {str(e)}")
         raise
 
 def process_file_by_type(file_path, detected_type, original_filename, temp_handler):
-    """根据文件类型选择处理方法"""
+    """Process file based on its type"""
     mime_type, ext = detected_type
     
-    # 如果有原始文件扩展名，优先使用
+    # Use original file extension if available
     if original_filename and '.' in original_filename:
         original_ext = os.path.splitext(original_filename)[1].lower()
         if original_ext in IMAGE_EXTENSIONS or original_ext == '.pdf' or \
@@ -105,20 +115,15 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
             ext = original_ext
     
     if not ext:
-        logger.error(f"不支持的文件类型: {mime_type}")
-        return {
-            'status': 'error',
-            'message': f'Unsupported file type: {mime_type}'
-        }, 400
+        logger.error(f"Unsupported file type: {mime_type}")
+        raise HTTPException(status_code=400, detail=f'Unsupported file type: {mime_type}')
     
     try:
         if ext in IMAGE_EXTENSIONS:
             with open(file_path, 'rb') as f:
                 from PIL import Image
-                # 使用with语句确保Image对象正确关闭
                 with Image.open(f) as image:
                     result = process_image(image)
-                    # 处理完图片后强制垃圾回收
                     gc.collect()
                     return {
                         'status': 'success',
@@ -130,7 +135,6 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
             with open(file_path, 'rb') as f:
                 pdf_stream = f.read()
                 result = process_pdf_file(pdf_stream)
-                # 处理完PDF后强制垃圾回收
                 gc.collect()
                 if result:
                     return {
@@ -138,14 +142,10 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
                         'filename': original_filename,
                         'result': result
                     }
-                return {
-                    'status': 'error',
-                    'message': 'No processable content found in PDF'
-                }, 400
+                raise HTTPException(status_code=400, detail='No processable content found in PDF')
                 
         elif ext in VIDEO_EXTENSIONS:
             result = process_video_file(file_path)
-            # 处理完视频后强制垃圾回收
             gc.collect()
             if result:
                 return {
@@ -153,14 +153,10 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
                     'filename': original_filename,
                     'result': result
                 }
-            return {
-                'status': 'error',
-                'message': 'No processable content found in video'
-            }, 400
+            raise HTTPException(status_code=400, detail='No processable content found in video')
                 
         elif ext in {'.zip', '.rar', '.7z', '.gz'}:
             result = process_archive(file_path, original_filename)
-            # 处理完压缩包后强制垃圾回收
             gc.collect()
             return result
             
@@ -172,7 +168,6 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
                 else:  # .docx
                     result = process_docx_file(file_content)
                 
-                # 处理完文档后强制垃圾回收
                 gc.collect()
                     
                 if result:
@@ -181,126 +176,121 @@ def process_file_by_type(file_path, detected_type, original_filename, temp_handl
                         'filename': original_filename,
                         'result': result
                     }
-                return {
-                    'status': 'error',
-                    'message': 'No processable content found in document'
-                }, 400
+                raise HTTPException(status_code=400, detail='No processable content found in document')
             
         else:
-            logger.error(f"不支持的文件扩展名: {ext}")
-            return {
-                'status': 'error',
-                'message': f'Unsupported file extension: {ext}'
-            }, 400
+            logger.error(f"Unsupported file extension: {ext}")
+            raise HTTPException(status_code=400, detail=f'Unsupported file extension: {ext}')
             
     except Exception as e:
-        logger.error(f"处理文件时出错: {str(e)}")
-        return {
-            'status': 'error',
-            'message': str(e)
-        }, 500
-    
-@app.route('/')
-def index():
-    """Serve the index.html file"""
-    return Response(INDEX_HTML, mimetype='text/html')
+        logger.error(f"Error processing file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/check', methods=['POST'])
-def check_file():
-    """统一的文件检查入口点"""
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    """Serve the index.html file"""
+    return INDEX_HTML
+
+# Extension settings
+MAX_FILE_SIZE = 10 * 1024 * 1024  # Default 10MB
+
+def get_extension_settings() -> Dict[str, Any]:
+    """Get extension settings from Forge UI"""
+    try:
+        # In a real Forge UI environment, this would be provided by the platform
+        settings = {
+            "max_file_size": MAX_FILE_SIZE
+        }
+        return settings
+    except Exception as e:
+        logger.error(f"Failed to get extension settings: {str(e)}")
+        return {"max_file_size": MAX_FILE_SIZE}
+
+@app.post("/api/nsfw/check")
+async def check_file(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    path: Optional[str] = Form(None)
+):
+    """Unified file check endpoint for Forge UI"""
+    # Verify Forge UI authentication
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail='Invalid or missing authentication token')
+    
+    # Get extension settings
+    settings = get_extension_settings()
+    max_file_size = settings.get("max_file_size", MAX_FILE_SIZE)
+    
     temp_handler = TempFileHandler()
     try:
-        # 获取请求中的 path 参数
-        path = request.form.get('path')
-        
         if path:
-            # 处理文件路径
+            # Handle file path
             abs_path = os.path.abspath(path)
             app_dir = os.path.abspath(os.path.dirname(__file__))
             
-            # 安全检查：确保路径不指向程序目录
+            # Security check: ensure path doesn't point to program directory
             if abs_path.startswith(app_dir):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'Invalid path: cannot access program directory'
-                }), 400
+                raise HTTPException(status_code=400, detail='Invalid path: cannot access program directory')
                 
-            # 检查文件是否存在
+            # Check if file exists
             if not os.path.exists(abs_path):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'File not found'
-                }), 404
+                raise HTTPException(status_code=404, detail='File not found')
                 
-            # 检查是否是文件
+            # Check if it's a file
             if not os.path.isfile(abs_path):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'Path is not a file'
-                }), 400
+                raise HTTPException(status_code=400, detail='Path is not a file')
                 
-            # 检查文件大小
+            # Check file size
             file_size = os.path.getsize(abs_path)
-            if file_size > MAX_FILE_SIZE:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'File too large'
-                }), 400
+            if file_size > max_file_size:
+                raise HTTPException(status_code=400, detail='File too large')
                 
-            # 获取原始文件名
-            filename = os.path.basename(abs_path)
+            # Get original filename
+            original_filename = os.path.basename(abs_path)
             
-            # 检测文件类型
+            # Detect file type
             detected_type = detect_file_type(abs_path)
-            logger.info(f"检测到文件类型: {detected_type}")
             
-            # 处理文件
-            result = process_file_by_type(abs_path, detected_type, filename, temp_handler)
-            return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1] if isinstance(result, tuple) else 200
+            # Process file
+            return process_file_by_type(abs_path, detected_type, original_filename, temp_handler)
             
-        # 文件上传处理逻辑
-        elif 'file' not in request.files:
-            return jsonify({
-                'status': 'error',
-                'message': 'No file found'
-            }), 400
+        elif file:
+            # Handle uploaded file
+            if file.content_type and file.content_type not in MIME_TO_EXT:
+                raise HTTPException(status_code=400, detail=f'Unsupported file type: {file.content_type}')
+                
+            # Create temporary file
+            temp_file = temp_handler.create_temp_file()
+            try:
+                # Save uploaded file
+                with open(temp_file.name, 'wb') as f:
+                    content = await file.read()
+                    if len(content) > max_file_size:
+                        raise HTTPException(status_code=400, detail='File too large')
+                    f.write(content)
+                
+                # Detect file type
+                detected_type = detect_file_type(temp_file.name)
+                
+                # Process file
+                return process_file_by_type(temp_file.name, detected_type, file.filename, temp_handler)
+                
+            finally:
+                temp_handler.cleanup()
+                
+        else:
+            raise HTTPException(status_code=400, detail='No file or path provided')
             
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({
-                'status': 'error',
-                'message': 'No file selected'
-            }), 400
-
-        filename = secure_filename(file.filename)
-        logger.info(f"接收到文件: {filename}")
-        
-        temp_file = temp_handler.create_temp_file()
-        file.save(temp_file.name)
-        
-        file_size = os.path.getsize(temp_file.name)
-        if file_size > MAX_FILE_SIZE:
-            return jsonify({
-                'status': 'error',
-                'message': 'File too large'
-            }), 400
-        
-        detected_type = detect_file_type(temp_file.name)
-        logger.info(f"检测到文件类型: {detected_type}")
-        
-        result = process_file_by_type(temp_file.name, detected_type, filename, temp_handler)
-        return jsonify(result) if isinstance(result, dict) else jsonify(result[0]), result[1] if isinstance(result, tuple) else 200
-
     except Exception as e:
-        logger.error(f"处理过程发生错误: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-        
-    finally:
-        # 清理所有临时文件
         temp_handler.cleanup()
+        raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3333)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Forge UI"""
+    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
