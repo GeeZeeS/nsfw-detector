@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, FastAPI
+from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 import tempfile
 import os
@@ -19,11 +19,10 @@ from .processors import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create router for Forge UI plugin
-router = APIRouter(
-    tags=["NSFW Detector"],
-    responses={404: {"description": "Not found"}},
-)
+app = FastAPI()
+
+# Create router without prefix - Forge UI will handle this
+router = APIRouter()
 
 class TempFileHandler:
     """Temporary file manager"""
@@ -186,25 +185,25 @@ def get_extension_settings() -> Dict[str, Any]:
         logger.error(f"Failed to get extension settings: {str(e)}")
         return {"max_file_size": MAX_FILE_SIZE}
 
-@router.get("/", summary="Get NSFW Detector API information")
+@router.get("/", tags=["NSFW Detector"])
 async def root():
-    """Root endpoint with API information"""
+    """Get NSFW Detector API information"""
     return {
         "name": "NSFW Detector API",
         "version": "1.0.0",
         "endpoints": {
-            "check": "/nsfw/check",
-            "health": "/nsfw/health"
+            "check": "/check",
+            "health": "/health"
         }
     }
 
-@router.post("/check", summary="Check if content is NSFW")
+@router.post("/check", tags=["NSFW Detector"])
 async def check_file(
     request: Request,
     file: Optional[UploadFile] = File(None, description="File to check for NSFW content"),
     path: Optional[str] = Form(None, description="Path to file to check for NSFW content")
 ):
-    """Unified file check endpoint for Forge UI"""
+    """Check if content is NSFW"""
     # Verify Forge UI authentication
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
@@ -278,37 +277,18 @@ async def check_file(
         temp_handler.cleanup()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/health", summary="Check NSFW Detector health status")
+@router.get("/health", tags=["NSFW Detector"])
 async def health_check():
-    """Health check endpoint for Forge UI"""
+    """Health check endpoint"""
     return {"status": "healthy"}
 
-def register(forge_app: FastAPI):
+def register():
     """Register the plugin with Forge UI"""
     try:
         logger.info("Starting NSFW Detector plugin registration...")
-        
-        # Add OpenAPI documentation
-        if not hasattr(forge_app, 'openapi_tags'):
-            forge_app.openapi_tags = []
-            
-        # Add our tag if it doesn't exist
-        if not any(tag["name"] == "NSFW Detector" for tag in forge_app.openapi_tags):
-            forge_app.openapi_tags.append({
-                "name": "NSFW Detector",
-                "description": "Endpoints for NSFW content detection in various file types"
-            })
-            
-        # Include the router with explicit prefix
-        forge_app.include_router(router, prefix="/nsfw")
-        
-        # Log successful registration
+        app.include_router(router, prefix="/nsfw", tags=["NSFW Detector"])
         logger.info("NSFW Detector plugin registered successfully")
-        logger.info("Registered routes:")
-        for route in forge_app.routes:
-            if hasattr(route, "path") and route.path.startswith("/nsfw"):
-                logger.info(f"  {route.methods} {route.path}")
-            
+        return app
     except Exception as e:
         logger.error(f"Failed to register NSFW Detector plugin: {str(e)}")
         raise 

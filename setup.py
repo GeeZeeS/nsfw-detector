@@ -15,11 +15,16 @@ setup(
         "python-doc>=0.1.0",
         "PyPDF2>=2.0.0",
         "opencv-python>=4.5.3",
-        "numpy>=1.21.2"
+        "numpy>=1.21.2",
+        "transformers>=4.30.0",
+        "torch>=2.0.0",
+        "pdf2image>=1.16.3",
+        "rarfile>=4.0",
+        "python-magic-bin>=0.4.14; platform_system=='Windows'",
     ],
     entry_points={
-        "forge.extensions": [
-            "nsfw_detector = nsfw_detector:register",
+        "forge.plugins": [
+            "nsfw_detector=nsfw_detector:register"
         ],
     },
     author="Your Name",

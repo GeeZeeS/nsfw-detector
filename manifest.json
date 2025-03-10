@@ -1,12 +1,16 @@
 {
-  "name": "nsfw-detector",
-  "version": "1.0.0",
-  "description": "NSFW content detection plugin for Forge UI",
-  "main": "nsfw_detector/api.py",
-  "author": "Your Name",
-  "license": "MIT",
+  "app": {
+    "id": "nsfw-detector",
+    "name": "NSFW Detector",
+    "version": "1.0.0",
+    "description": "Detect NSFW content in images, videos, PDFs, and documents",
+    "author": "NSFW Detector Contributors",
+    "repository": "https://github.com/yourusername/nsfw-detector",
+    "license": "MIT"
+  },
   "dependencies": {
     "fastapi": ">=0.68.0",
+    "uvicorn": ">=0.15.0",
     "python-multipart": ">=0.0.5",
     "python-magic": ">=0.4.24",
     "Pillow": ">=8.3.1",
@@ -14,54 +18,61 @@
     "python-doc": ">=0.1.0",
     "PyPDF2": ">=2.0.0",
     "opencv-python": ">=4.5.3",
-    "numpy": ">=1.21.2"
+    "numpy": ">=1.21.2",
+    "transformers": ">=4.30.0",
+    "torch": ">=2.0.0",
+    "pdf2image": ">=1.16.3",
+    "rarfile": ">=4.0"
   },
-  "forge": {
-    "id": "nsfw-detector",
-    "api": "1.0.0",
-    "type": "extension",
-    "name": "NSFW Detector",
-    "description": "Detect NSFW content in images, videos, PDFs, and documents",
-    "version": "1.0.0",
-    "author": "Your Name",
-    "repository": "https://github.com/GeeZeeS/nsfw-detector",
-    "entry_point": "nsfw_detector.api:register",
-    "routes": [
-      {
-        "path": "/",
-        "method": "GET",
-        "description": "Get NSFW Detector API information",
-        "auth": false
-      },
-      {
-        "path": "/check",
-        "method": "POST",
-        "description": "Check if content is NSFW",
-        "auth": true,
-        "parameters": {
-          "file": {
-            "type": "file",
-            "description": "File to check for NSFW content"
-          },
-          "path": {
-            "type": "string",
-            "description": "Path to file to check for NSFW content"
-          }
-        }
-      },
-      {
-        "path": "/health",
-        "method": "GET",
-        "description": "Health check endpoint",
-        "auth": false
-      }
-    ],
-    "settings": {
-      "max_file_size": {
-        "type": "number",
-        "default": 10485760,
-        "description": "Maximum file size in bytes"
-      }
+  "modules": {
+    "forge": {
+      "function": "nsfw_detector:register",
+      "endpoint": "/nsfw/check"
+    }
+  },
+  "permissions": [
+    "read:content",
+    "write:content"
+  ],
+  "system_requirements": {
+    "python": ">=3.8",
+    "packages": [
+      "ffmpeg",
+      "unrar",
+      "p7zip-full",
+      "antiword"
+    ]
+  },
+  "config": {
+    "MAX_FILE_SIZE": {
+      "type": "integer",
+      "default": 21474836480,
+      "description": "Maximum file size in bytes (default: 20GB)"
+    },
+    "NSFW_THRESHOLD": {
+      "type": "float",
+      "default": 0.8,
+      "description": "Threshold for NSFW detection"
+    },
+    "FFMPEG_MAX_FRAMES": {
+      "type": "integer",
+      "default": 20,
+      "description": "Maximum frames to extract from videos"
+    },
+    "FFMPEG_TIMEOUT": {
+      "type": "integer",
+      "default": 1800,
+      "description": "Timeout for video processing in seconds"
+    },
+    "CHECK_ALL_FILES": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to check all files in archives"
+    },
+    "MAX_INTERVAL_SECONDS": {
+      "type": "integer",
+      "default": 30,
+      "description": "Maximum interval between frame extractions"
     }
   }
 } 
